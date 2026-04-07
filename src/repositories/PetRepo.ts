@@ -1,20 +1,31 @@
 import { Repository } from "typeorm";
 import PetEntity from "../entities/PetEntity";
 import InterfacePetRepo from "./interfaces/InterfacePetRepo";
+import AdotanteEntity from "../entities/AdotanteEntity";
 
 export default class PetRepo implements InterfacePetRepo {
-	private repository: Repository<PetEntity>;
+	private petRepo: Repository<PetEntity>;
+	private adotanteRepo: Repository<AdotanteEntity>;
 
-	constructor(repository: Repository<PetEntity>) {
-		this.repository = repository;
+	constructor(petRepository: Repository<PetEntity>, adotanteRepository: Repository<AdotanteEntity>) {
+		this.petRepo = petRepository;
+		this.adotanteRepo = adotanteRepository;
 	}
-
-	criaPet(pet: PetEntity): void {
-		 void this.repository.save(pet);
+	
+	async criaPet(pet: PetEntity): Promise<void> {
+		await this.petRepo.save(pet);
 	}
-
+	
 	async listaPet(): Promise<PetEntity[]> {
-		return await this.repository.find();
+		return await this.petRepo.find();
+	}
+
+	async buscaPorCampoGenerico<Tipo extends keyof PetEntity>(
+		campo: Tipo, 
+		valor: PetEntity[Tipo]
+	): Promise<PetEntity[]> {
+		const pets = await this.petRepo.find({ where: { [campo]: valor } });
+		return pets;
 	}
 
 	async atualizaPet(
@@ -22,7 +33,7 @@ export default class PetRepo implements InterfacePetRepo {
 		Dados: PetEntity
 	): Promise<{ success: boolean; message?: string }> {
 		try {
-			const petToUpdate = await this.repository.findOne({ where: { id } });
+			const petToUpdate = await this.petRepo.findOne({ where: { id } });
 
 			if (!petToUpdate) {
 				return { success: false, message: "Pet não encontrado" };
@@ -30,9 +41,9 @@ export default class PetRepo implements InterfacePetRepo {
 
 			Object.assign(petToUpdate, Dados);
 
-			await this.repository.save(petToUpdate);
+			await this.petRepo.save(petToUpdate);
 
-			return { success: true, message: "Pet atualizado."};
+			return { success: true, message: "Pet atualizado." };
 		} catch (error) {
 			console.log(error);
 			return {
@@ -45,23 +56,34 @@ export default class PetRepo implements InterfacePetRepo {
 	async deletaPet(
 		id: number
 	): Promise<{ success: boolean; message?: string }> {
-		try {
-			const petToRemove = await this.repository.findOne({ where: { id } });
+		const petToRemove = await this.petRepo.findOne({ where: { id } });
 
-			if (!petToRemove) {
-				return {success: false, message: "Pet não encontrado."};
-			}
-
-			await this.repository.delete(petToRemove);
-
-			return {success: true, message: "Pet excluído com sucesso."};
-		} catch (err) {
-			console.log(err);
-			return {
-				success: false,
-				message: "Erro ao excluir pet."
-			};
-			
+		if (!petToRemove) {
+			return { success: false, message: "Pet não encontrado." };
 		}
+
+		await this.petRepo.delete(id);
+		return { success: true };
+	}
+
+	async adotaPet(idPet: number, idAdotante: number): Promise<{ success: boolean; message?: string }> {
+		const pet = await this.petRepo.findOne({
+			where: { id: idPet },
+		});
+		if (!pet) {
+			return { success: false, message: "Pet não encontrado" };
+		}
+
+		const adotante = await this.adotanteRepo.findOne({
+			where: { id: idAdotante },
+		});
+		if (!adotante) {
+			return { success: false, message: "Adotante não encontrado" };
+		}
+
+		pet.adotante = adotante;
+		pet.adotado = true;
+		await this.petRepo.save(pet);
+		return { success: true };
 	}
 }
